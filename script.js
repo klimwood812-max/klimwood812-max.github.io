@@ -1,180 +1,200 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-// --------------------------------------------------------------
-// 1. Анимация появления карточек при скролле (было)
-// --------------------------------------------------------------
-const cards = document.querySelectorAll('.project-card');
-const fadeObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-            fadeObserver.unobserve(entry.target);
-        }
-    });
-}, { threshold: 0.1, rootMargin: '0px 0px -20px 0px' });
-
-cards.forEach(card => fadeObserver.observe(card));
-
-// Доп. проверка при загрузке
-window.addEventListener('load', () => {
-    cards.forEach(card => {
-        if (card.getBoundingClientRect().top < window.innerHeight - 100) {
-            card.classList.add('visible');
-            fadeObserver.unobserve(card);
-        }
-    });
-});
-
-// --------------------------------------------------------------
-// 2. Переключение темы (было) + синхронизация с фоном 3D-сцен
-// --------------------------------------------------------------
+// ─────────────────────────────────────────────
+// ТЕМА
+// ─────────────────────────────────────────────
 const themeToggle = document.getElementById('themeToggle');
 const body = document.body;
 
 function setTheme(theme) {
     if (theme === 'light') {
-        body.classList.remove('dark');
-        body.classList.add('light');
+        body.classList.replace('dark', 'light');
         themeToggle.innerHTML = '🌙 Dark';
-        localStorage.setItem('portfolio-theme', 'light');
-        // Обновить фоновый цвет у всех canvas (если они уже созданы) – опционально
-        document.querySelectorAll('.model-canvas').forEach(canvas => {
-            const renderer = canvas.renderer;
-            if (renderer) renderer.setClearColor(0xf8fafc, 0); // прозрачный, но можно задать светлый тон
-        });
     } else {
-        body.classList.remove('light');
-        body.classList.add('dark');
+        body.classList.replace('light', 'dark');
         themeToggle.innerHTML = '☀️ Light';
-        localStorage.setItem('portfolio-theme', 'dark');
-        document.querySelectorAll('.model-canvas').forEach(canvas => {
-            const renderer = canvas.renderer;
-            if (renderer) renderer.setClearColor(0x131318, 0);
-        });
     }
+    localStorage.setItem('portfolio-theme', theme);
 }
 
 const savedTheme = localStorage.getItem('portfolio-theme');
-if (savedTheme === 'light') setTheme('light');
-else setTheme('dark');
+setTheme(savedTheme === 'light' ? 'light' : 'dark');
 
 themeToggle.addEventListener('click', () => {
-    if (body.classList.contains('dark')) setTheme('light');
-    else setTheme('dark');
+    setTheme(body.classList.contains('dark') ? 'light' : 'dark');
 });
 
-// --------------------------------------------------------------
-// 3. Ленивая загрузка 3D-моделей для каждой карточки (НОВОЕ)
-// --------------------------------------------------------------
-const modelObserver = new IntersectionObserver((entries) => {
+// ─────────────────────────────────────────────
+// ПОЯВЛЕНИЕ КАРТОЧЕК + ЗАПУСК 3D (единый observer)
+// ─────────────────────────────────────────────
+const cards = document.querySelectorAll('.project-card');
+
+const cardObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            init3DFromCard(entry.target);
-            modelObserver.unobserve(entry.target);
+        if (!entry.isIntersecting) return;
+
+        const card = entry.target;
+        card.classList.add('visible');
+        cardObserver.unobserve(card);
+
+        // Запускаем 3D только если у карточки есть data-model
+        if (card.dataset.model) {
+            // requestAnimationFrame — ждём один кадр браузера,
+            // чтобы layout был посчитан и getBoundingClientRect вернул реальные размеры
+            requestAnimationFrame(() => init3D(card));
         }
     });
-}, { threshold: 0.3 });
+}, { threshold: 0.1, rootMargin: '0px 0px -20px 0px' });
 
-function init3DFromCard(card) {
-    const canvas = card.querySelector('.model-canvas');
-    if (!canvas) return;
-    const modelPath = card.getAttribute('data-model');
-    if (!modelPath) return;
+cards.forEach(card => cardObserver.observe(card));
+
+// Карточки в зоне видимости при первой загрузке
+window.addEventListener('load', () => {
+    cards.forEach(card => {
+        const rect = card.getBoundingClientRect();
+        if (rect.top < window.innerHeight - 50) {
+            card.classList.add('visible');
+            cardObserver.unobserve(card);
+            if (card.dataset.model) {
+                requestAnimationFrame(() => init3D(card));
+            }
+        }
+    });
+});
+
+// ─────────────────────────────────────────────
+// ИНИЦИАЛИЗАЦИЯ 3D
+// ─────────────────────────────────────────────
+function init3D(card) {
+    // Защита от двойного вызова
     if (card.dataset.modelLoaded === 'true') return;
     card.dataset.modelLoaded = 'true';
 
-    // Определяем родительский контейнер для размеров
-    const container = canvas.parentElement;
-    const rect = container.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    if (width === 0 || height === 0) return;
+    const canvas = card.querySelector('.model-canvas');
+    const loader_indicator = card.querySelector('.canvas-loader');
+    if (!canvas) return;
 
-    // Настройка сцены с прозрачным фоном (подхватит тему body)
+    const modelPath = card.dataset.model;
+    const container = canvas.parentElement; // .card-img
+
+    // Получаем реальные размеры — offsetWidth надёжнее при opacity:0
+    const width  = container.offsetWidth  || 400;
+    const height = container.offsetHeight || 200;
+
+    // ── Сцена ──
     const scene = new THREE.Scene();
-    scene.background = null; // прозрачный
+    // Фон не задаём — canvas прозрачный, тему подхватывает через CSS
 
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.set(2, 1.5, 3);
+    // ── Камера ──
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 1000);
+    camera.position.set(2.5, 1.5, 3);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+    // ── Рендерер ──
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    // Сохраняем ссылку на renderer, чтобы менять clear color при смене темы (опционально)
-    canvas.renderer = renderer;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
 
-    // Освещение (универсальное)
-    const ambientLight = new THREE.AmbientLight(0x404060);
-    scene.add(ambientLight);
-    const mainLight = new THREE.DirectionalLight(0xffffff, 1);
-    mainLight.position.set(2, 3, 4);
-    scene.add(mainLight);
-    const fillLight = new THREE.PointLight(0x4466cc, 0.3);
-    fillLight.position.set(-1, 1, 2);
-    scene.add(fillLight);
-    const backLight = new THREE.PointLight(0xffaa66, 0.2);
-    backLight.position.set(0, 1, -2);
-    scene.add(backLight);
+    // ── Освещение ──
+    const ambient  = new THREE.AmbientLight(0x404060, 1.2);
+    const mainLight = new THREE.DirectionalLight(0xffffff, 2.0);
+    mainLight.position.set(3, 5, 4);
+    const fillLight = new THREE.PointLight(0x4466cc, 0.8, 20);
+    fillLight.position.set(-2, 2, 2);
+    const rimLight  = new THREE.PointLight(0xff4d00, 0.4, 20);
+    rimLight.position.set(0, 1, -3);
+    scene.add(ambient, mainLight, fillLight, rimLight);
 
-    // Загрузка модели
-    const loader = new GLTFLoader();
-    loader.load(modelPath, (gltf) => {
-        const model = gltf.scene;
-        // Центрируем модель и масштабируем по размеру (опционально)
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = 1.8 / maxDim; // подгоняем под размер сцены
-        model.scale.set(scale, scale, scale);
-        // Центрируем по вертикали
-        const center = box.getCenter(new THREE.Vector3());
-        model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
-        scene.add(model);
-        card.modelObject = model;
-    }, undefined, (error) => {
-        console.error(`Ошибка загрузки ${modelPath}:`, error);
-        canvas.style.display = 'none';
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-cube';
-        icon.style.fontSize = '4rem';
-        icon.style.color = 'var(--accent2)';
-        container.appendChild(icon);
-    });
+    // ── Загрузка модели ──
+    const gltfLoader = new GLTFLoader();
 
-    // Анимация вращения
-    let animationId = null;
+    gltfLoader.load(
+        modelPath,
+
+        // onLoad — успех
+        (gltf) => {
+            const model = gltf.scene;
+
+            // Центрируем и масштабируем под сцену
+            const box    = new THREE.Box3().setFromObject(model);
+            const size   = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale  = 1.8 / maxDim;
+
+            model.scale.setScalar(scale);
+            model.position.set(
+                -center.x * scale,
+                -center.y * scale,
+                -center.z * scale
+            );
+
+            scene.add(model);
+            card._model3D = model;
+
+            // Скрываем лоадер
+            if (loader_indicator) loader_indicator.style.opacity = '0';
+        },
+
+        // onProgress — не используем
+        undefined,
+
+        // onError — показываем заглушку
+        (error) => {
+            console.error(`[3D] Ошибка загрузки: ${modelPath}`, error);
+            showFallback(card, canvas, container, loader_indicator);
+        }
+    );
+
+    // ── Анимация вращения ──
+    let rafId;
     function animate() {
-        animationId = requestAnimationFrame(animate);
-        if (card.modelObject) {
-            card.modelObject.rotation.y += 0.005;
+        rafId = requestAnimationFrame(animate);
+        if (card._model3D) {
+            card._model3D.rotation.y += 0.005;
         }
         renderer.render(scene, camera);
     }
     animate();
 
-    // Наблюдатель за изменением размера контейнера
+    // ── Адаптивность ──
     const resizeObserver = new ResizeObserver(() => {
-        const newRect = container.getBoundingClientRect();
-        const newWidth = newRect.width;
-        const newHeight = newRect.height;
-        if (newWidth === 0 || newHeight === 0) return;
-        camera.aspect = newWidth / newHeight;
+        const w = container.offsetWidth;
+        const h = container.offsetHeight;
+        if (!w || !h) return;
+        camera.aspect = w / h;
         camera.updateProjectionMatrix();
-        renderer.setSize(newWidth, newHeight);
+        renderer.setSize(w, h);
     });
     resizeObserver.observe(container);
 
-    // Очистка при удалении карточки (опционально)
+    // ── Очистка ──
     card.addEventListener('remove', () => {
-        if (animationId) cancelAnimationFrame(animationId);
+        cancelAnimationFrame(rafId);
         resizeObserver.disconnect();
-        if (card.modelObject) scene.remove(card.modelObject);
+        renderer.dispose();
     });
 }
 
-// Запускаем наблюдатель для всех карточек
-cards.forEach(card => {
-    modelObserver.observe(card);
-});
+// ─────────────────────────────────────────────
+// FALLBACK — если модель не загрузилась
+// ─────────────────────────────────────────────
+function showFallback(card, canvas, container, loaderEl) {
+    canvas.style.display = 'none';
+    if (loaderEl) loaderEl.style.display = 'none';
+
+    container.classList.add('card-img--placeholder');
+
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-cube';
+    container.appendChild(icon);
+
+    const text = document.createElement('div');
+    text.className = 'img-placeholder-text';
+    text.textContent = 'preview';
+    container.appendChild(text);
+}
