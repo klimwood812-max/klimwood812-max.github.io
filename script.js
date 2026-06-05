@@ -134,6 +134,12 @@ function init3D(card) {
             );
 
             scene.add(model);
+            // Рендерить модель сразу, даже без текстур
+                                model.traverse((child) => {
+                                    if (child.isMesh && child.material) {
+                                        child.material.needsUpdate = true;
+                                    }
+                                });
             card._model3D = model;
 
             // Скрываем лоадер
@@ -159,7 +165,7 @@ function init3D(card) {
         }
         renderer.render(scene, camera);
     }
-    animate();
+    //animate();
 
     // ── Адаптивность ──
     const resizeObserver = new ResizeObserver(() => {
