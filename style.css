@@ -292,6 +292,110 @@ body.light .project-card:hover .card-img--placeholder i { color: #3b82f6; }
     margin-top: 8px;
 }
 
+/* ─────────────────────────────────────────
+   ФОТО-ПРЕВЬЮ
+───────────────────────────────────────── */
+.card-img--photo {
+    padding: 0;
+    background: #0a0a0e;
+}
+
+/* Само фото */
+.card-photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+    transition: transform 0.5s ease, filter 0.4s ease;
+    filter: brightness(0.92) saturate(1.05);
+}
+.project-card:hover .card-photo {
+    transform: scale(1.06);
+    filter: brightness(0.6) saturate(1.1);
+}
+
+/* Overlay поверх фото */
+.card-photo-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    background: linear-gradient(
+        to top,
+        rgba(0,0,0,0.7) 0%,
+        rgba(0,0,0,0.1) 60%,
+        transparent 100%
+    );
+}
+.project-card:hover .card-photo-overlay {
+    opacity: 1;
+}
+
+/* Кнопка на overlay */
+.overlay-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.5rem 1.3rem;
+    border-radius: 40px;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: #000;
+    background: var(--accent);
+    border: none;
+    transform: translateY(8px);
+    transition: transform 0.35s ease, gap 0.2s;
+    white-space: nowrap;
+}
+.project-card:hover .overlay-btn {
+    transform: translateY(0);
+}
+.overlay-btn:hover {
+    gap: 12px;
+    background: #fff;
+}
+
+/* Подпись на overlay */
+.overlay-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    transform: translateY(8px);
+    transition: transform 0.4s ease 0.05s;
+}
+.project-card:hover .overlay-label {
+    transform: translateY(0);
+}
+
+/* Градиентная рамка снизу при hover */
+.card-img--photo::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.4s ease;
+}
+.project-card:hover .card-img--photo::after {
+    transform: scaleX(1);
+}
+
 /* Canvas 3D — заполняет всё .card-img */
 .model-canvas {
     position: absolute;
